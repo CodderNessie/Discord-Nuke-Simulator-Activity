@@ -83,10 +83,9 @@ L.control.zoom({
 }).addTo(map);
 
 L.tileLayer(
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "/tiles/{z}/{x}/{y}.png",
   {
     maxZoom: 19,
-    crossOrigin: true,
     attribution: "&copy; OpenStreetMap contributors"
   }
 ).addTo(map);
