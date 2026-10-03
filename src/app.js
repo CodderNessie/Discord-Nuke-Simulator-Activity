@@ -3,9 +3,19 @@ import "./style.css";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { DiscordSDK } from "@discord/embedded-app-sdk";
+import {
+  DiscordSDK,
+  patchUrlMappings
+} from "@discord/embedded-app-sdk";
 
 document.body.setAttribute("data-js-loaded", "true");
+
+patchUrlMappings([
+  {
+    prefix: "/tiles",
+    target: "tile.openstreetmap.org"
+  }
+]);
 
 const presets = {
   davyCrockett: [
