@@ -82,8 +82,12 @@ L.control.zoom({
   position: "topright"
 }).addTo(map);
 
+const tileUrl = window.location.hostname === "discord.com"
+  ? "/tiles/{z}/{x}/{y}.png"
+  : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
 L.tileLayer(
-  "/tiles/{z}/{x}/{y}.png",
+  tileUrl,
   {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
