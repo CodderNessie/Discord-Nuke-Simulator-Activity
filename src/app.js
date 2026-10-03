@@ -3,7 +3,10 @@ import "./style.css";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { DiscordSDK } from "@discord/embedded-app-sdk";
+import {
+  DiscordSDK,
+  patchUrlMappings
+} from "@discord/embedded-app-sdk";
 
 document.body.setAttribute("data-js-loaded", "true");
 
@@ -82,8 +85,11 @@ L.control.zoom({
   position: "topright"
 }).addTo(map);
 
-let tileLayer = L.tileLayer(
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+const tileUrl =
+  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+L.tileLayer(
+  tileUrl,
   {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
@@ -457,20 +463,15 @@ async function initializeDiscordSDK() {
 
     await state.discordSdk.ready();
 
+    patchUrlMappings([
+      {
+        prefix: "/tiles",
+        target: "tile.openstreetmap.org"
+      }
+    ]);
+
     elements.discordStatus.textContent =
       "DISCORD SDK: READY";
-
-    map.removeLayer(tileLayer);
-
-    tileLayer = L.tileLayer(
-      "/tiles/{z}/{x}/{y}.png",
-      {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors"
-      }
-    ).addTo(map);
-
-    tileLayer.bringToBack();
 
     setTimeout(() => {
       map.invalidateSize();
