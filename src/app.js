@@ -82,12 +82,8 @@ L.control.zoom({
   position: "topright"
 }).addTo(map);
 
-const tileUrl = window.location.hostname === "discord.com"
-  ? "/tiles/{z}/{x}/{y}.png"
-  : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-L.tileLayer(
-  tileUrl,
+let tileLayer = L.tileLayer(
+  "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
@@ -463,6 +459,22 @@ async function initializeDiscordSDK() {
 
     elements.discordStatus.textContent =
       "DISCORD SDK: READY";
+
+    map.removeLayer(tileLayer);
+
+    tileLayer = L.tileLayer(
+      "/tiles/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }
+    ).addTo(map);
+
+    tileLayer.bringToBack();
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
   } catch (error) {
     console.warn(
       "Discord SDK is not running inside Discord:",
