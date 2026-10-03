@@ -466,12 +466,17 @@ async function initializeDiscordSDK() {
     console.log("DISCORD SDK READY");
     console.log("PATCHING TILE URL MAPPING");
 
-    patchUrlMappings([
-      {
-        prefix: "/tiles",
-        target: "tile.openstreetmap.org"
-      }
-    ]);
+    patchUrlMappings(
+  [
+    {
+      prefix: "/tiles",
+      target: "tile.openstreetmap.org"
+    }
+  ],
+  {
+    patchSrcAttributes: true
+  }
+);
 
     console.log("TILE URL MAPPING PATCHED");
 
