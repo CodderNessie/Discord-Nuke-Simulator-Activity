@@ -463,12 +463,17 @@ async function initializeDiscordSDK() {
 
     await state.discordSdk.ready();
 
+    console.log("DISCORD SDK READY");
+    console.log("PATCHING TILE URL MAPPING");
+
     patchUrlMappings([
       {
         prefix: "/tiles",
         target: "tile.openstreetmap.org"
       }
     ]);
+
+    console.log("TILE URL MAPPING PATCHED");
 
     elements.discordStatus.textContent =
       "DISCORD SDK: READY";
