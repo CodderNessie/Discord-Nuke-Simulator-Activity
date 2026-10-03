@@ -5,6 +5,8 @@ import "leaflet/dist/leaflet.css";
 
 import { DiscordSDK } from "@discord/embedded-app-sdk";
 
+document.body.setAttribute("data-js-loaded", "true");
+
 const presets = {
   davyCrockett: [
     { name: "Fireball Radius", meters: 500, display: "500m", color: "#FF4500" },
