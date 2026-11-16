@@ -11,6 +11,19 @@ import {
 document.body.setAttribute("data-js-loaded", "true");
 
 const DISCORD_CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID;
+const IS_DISCORD_ACTIVITY = new URLSearchParams(window.location.search).has("frame_id");
+
+// Register the proxy mapping before Leaflet creates any tile image requests.
+// This must also work when the client ID is missing, since tile rendering does
+// not itself require an SDK handshake.
+if (IS_DISCORD_ACTIVITY) {
+  patchUrlMappings([
+    {
+      prefix: "/tiles",
+      target: "tile.openstreetmap.org"
+    }
+  ]);
+}
 
 let map = null;
 
@@ -32,7 +45,7 @@ function createMap() {
     position: "topright"
   }).addTo(map);
 
-  const tileUrl = DISCORD_CLIENT_ID
+  const tileUrl = IS_DISCORD_ACTIVITY
     ? "/tiles/{z}/{x}/{y}.png"
     : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
@@ -40,6 +53,14 @@ function createMap() {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
+
+  map.on("click", (event) => {
+    if (state.mapLocked || state.isAnimating) {
+      return;
+    }
+
+    setTarget(event.latlng.lat, event.latlng.lng);
+  });
 
   return map;
 }
@@ -113,14 +134,7 @@ function updateZones() {
     .map(
       (zone) => `
         <div class="zone">
-          <div
-            class="zone-color"
-            style="
-              background:${zone.color};
-              box-shadow:0 0 8px ${zone.color};
-            "
-          ></div>
-
+          <div class="zone-color" style="background:${zone.color};box-shadow:0 0 8px ${zone.color};"></div>
           <div class="zone-info">
             <div class="zone-name">${zone.name}</div>
             <div class="zone-distance">${zone.display}</div>
@@ -132,26 +146,16 @@ function updateZones() {
 }
 
 function clearRings() {
-  if (!map) {
-    return;
-  }
-
   for (const ring of state.rings) {
     map.removeLayer(ring);
   }
-
   state.rings = [];
 }
 
 function clearExplosionRings() {
-  if (!map) {
-    return;
-  }
-
   for (const ring of state.explosionRings) {
     map.removeLayer(ring);
   }
-
   state.explosionRings = [];
 }
 
@@ -160,10 +164,7 @@ function setTarget(lat, lng, zoomToTarget = false) {
     return;
   }
 
-  state.target = {
-    lat,
-    lng
-  };
+  state.target = { lat, lng };
 
   if (state.targetMarker) {
     map.removeLayer(state.targetMarker);
@@ -183,10 +184,8 @@ function setTarget(lat, lng, zoomToTarget = false) {
 
   elements.targetStatus.textContent = "TARGET SELECTED";
   elements.targetStatus.classList.add("selected");
-
   elements.latitude.textContent = lat.toFixed(6);
   elements.longitude.textContent = lng.toFixed(6);
-
   elements.activateButton.disabled = false;
   elements.activateButton.textContent = "DETONATE";
 
@@ -196,36 +195,24 @@ function setTarget(lat, lng, zoomToTarget = false) {
 }
 
 function lockMap() {
-  if (!map) {
-    return;
-  }
-
   state.mapLocked = true;
-
   map.dragging.disable();
   map.scrollWheelZoom.disable();
   map.doubleClickZoom.disable();
   map.boxZoom.disable();
   map.keyboard.disable();
   map.touchZoom.disable();
-
   elements.map.classList.add("map-locked");
 }
 
 function unlockMap() {
-  if (!map) {
-    return;
-  }
-
   state.mapLocked = false;
-
   map.dragging.enable();
   map.scrollWheelZoom.enable();
   map.doubleClickZoom.enable();
   map.boxZoom.enable();
   map.keyboard.enable();
   map.touchZoom.enable();
-
   elements.map.classList.remove("map-locked");
 }
 
@@ -235,51 +222,40 @@ function easeOutCubic(t) {
 
 function animateExplosion() {
   return new Promise((resolve) => {
-    if (!map || !state.target) {
+    if (!state.target) {
       resolve();
       return;
     }
 
     clearExplosionRings();
-
     const zones = presets[state.selectedPreset];
-
-    const explosionRings = zones.map((zone) => {
-      return L.circle(
-        [state.target.lat, state.target.lng],
-        {
-          radius: 0,
-          color: zone.color,
-          fillColor: zone.color,
-          fillOpacity: 0.20,
-          weight: 4,
-          opacity: 1,
-          interactive: false
-        }
-      ).addTo(map);
-    });
+    const explosionRings = zones.map((zone) => L.circle(
+      [state.target.lat, state.target.lng],
+      {
+        radius: 0,
+        color: zone.color,
+        fillColor: zone.color,
+        fillOpacity: 0.20,
+        weight: 4,
+        opacity: 1,
+        interactive: false
+      }
+    ).addTo(map));
 
     state.explosionRings = explosionRings;
-
     const startTime = performance.now();
     const duration = 2600;
 
     function frame(currentTime) {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = Math.min((currentTime - startTime) / duration, 1);
 
       zones.forEach((zone, index) => {
         const ring = explosionRings[index];
         const zoneStart = index * 0.10;
-        const zoneProgress = Math.max(
-          0,
-          Math.min((progress - zoneStart) / (1 - zoneStart), 1)
-        );
+        const zoneProgress = Math.max(0, Math.min((progress - zoneStart) / (1 - zoneStart), 1));
         const easedZoneProgress = easeOutCubic(zoneProgress);
-
         ring.setRadius(zone.meters * easedZoneProgress);
         const pulse = Math.sin(zoneProgress * Math.PI);
-
         ring.setStyle({
           opacity: 0.65 + pulse * 0.35,
           fillOpacity: 0.08 + pulse * 0.16,
@@ -292,13 +268,8 @@ function animateExplosion() {
       } else {
         zones.forEach((zone, index) => {
           explosionRings[index].setRadius(zone.meters);
-          explosionRings[index].setStyle({
-            opacity: 0.9,
-            fillOpacity: 0.16,
-            weight: 2
-          });
+          explosionRings[index].setStyle({ opacity: 0.9, fillOpacity: 0.16, weight: 2 });
         });
-
         state.rings = [...explosionRings];
         state.explosionRings = [];
         resolve();
@@ -310,35 +281,25 @@ function animateExplosion() {
 }
 
 async function activate() {
-  if (!map || !state.target || state.isAnimating) {
+  if (!state.target || state.isAnimating) {
     return;
   }
 
   state.isAnimating = true;
   elements.activateButton.disabled = true;
   elements.activateButton.textContent = "FIRING...";
-
   clearRings();
   clearExplosionRings();
-
   lockMap();
 
   if (elements.shockwave) {
     elements.shockwave.classList.add("active");
-
-    setTimeout(() => {
-      elements.shockwave.classList.remove("active");
-    }, 1200);
+    setTimeout(() => elements.shockwave.classList.remove("active"), 1200);
   }
 
   await animateExplosion();
-
-  await new Promise((resolve) => {
-    setTimeout(resolve, 300);
-  });
-
+  await new Promise((resolve) => setTimeout(resolve, 300));
   unlockMap();
-
   state.isAnimating = false;
   elements.activateButton.disabled = false;
   elements.activateButton.textContent = "DETONATE AGAIN";
@@ -350,14 +311,9 @@ function handlePresetChange(event) {
   }
 
   state.selectedPreset = event.currentTarget.dataset.preset;
-
   elements.presetButtons.forEach((button) => {
-    button.classList.toggle(
-      "active",
-      button.dataset.preset === state.selectedPreset
-    );
+    button.classList.toggle("active", button.dataset.preset === state.selectedPreset);
   });
-
   updateZones();
   clearRings();
   clearExplosionRings();
@@ -365,13 +321,11 @@ function handlePresetChange(event) {
 
 async function searchCity(event) {
   event.preventDefault();
-
   if (state.isAnimating || !map) {
     return;
   }
 
   const query = elements.searchInput.value.trim();
-
   if (!query) {
     return;
   }
@@ -383,87 +337,46 @@ async function searchCity(event) {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en&q=${encodeURIComponent(query)}`
     );
-
     if (!response.ok) {
       throw new Error(`Search request failed: ${response.status}`);
     }
 
     const results = await response.json();
-
     if (!results.length) {
       elements.searchInput.value = "";
       elements.searchInput.placeholder = "LOCATION NOT FOUND";
-
-      setTimeout(() => {
-        elements.searchInput.placeholder = "Search for a city...";
-      }, 1800);
-
+      setTimeout(() => { elements.searchInput.placeholder = "Search for a city..."; }, 1800);
       return;
     }
 
     const result = results[0];
-    const lat = Number(result.lat);
-    const lng = Number(result.lon);
-
-    setTarget(lat, lng, true);
+    setTarget(Number(result.lat), Number(result.lon), true);
     elements.searchInput.value = "";
   } catch (error) {
     console.error("City search failed:", error);
-
     elements.searchInput.value = "";
     elements.searchInput.placeholder = "SEARCH FAILED";
-
-    setTimeout(() => {
-      elements.searchInput.placeholder = "Search for a city...";
-    }, 1800);
+    setTimeout(() => { elements.searchInput.placeholder = "Search for a city..."; }, 1800);
   } finally {
     elements.searchInput.disabled = false;
     elements.searchForm.classList.remove("searching");
   }
 }
 
-function configureDiscordTileProxy() {
-  if (!DISCORD_CLIENT_ID) {
-    return false;
-  }
-
-  patchUrlMappings([
-    {
-      prefix: "/tiles",
-      target: "tile.openstreetmap.org"
-    }
-  ]);
-
-  return true;
-}
-
 async function initializeDiscordSDK() {
   if (!DISCORD_CLIENT_ID) {
     createMap();
-    elements.discordStatus.textContent = "DISCORD SDK: LOCAL MODE";
-    setTimeout(() => {
-      if (map) {
-        map.invalidateSize();
-      }
-    }, 100);
+    elements.discordStatus.textContent = IS_DISCORD_ACTIVITY
+      ? "MAP PROXY ACTIVE — SDK CLIENT ID NOT CONFIGURED"
+      : "DISCORD SDK: LOCAL MODE";
     return;
   }
 
   try {
     state.discordSdk = new DiscordSDK(DISCORD_CLIENT_ID);
     await state.discordSdk.ready();
-
-    console.log("DISCORD SDK READY");
-    configureDiscordTileProxy();
     createMap();
-
     elements.discordStatus.textContent = "DISCORD SDK: READY";
-
-    setTimeout(() => {
-      if (map) {
-        map.invalidateSize();
-      }
-    }, 100);
   } catch (error) {
     console.warn("Discord SDK is not running inside Discord:", error);
     createMap();
@@ -474,20 +387,8 @@ async function initializeDiscordSDK() {
 elements.presetButtons.forEach((button) => {
   button.addEventListener("click", handlePresetChange);
 });
-
 elements.activateButton.addEventListener("click", activate);
-
 elements.searchForm.addEventListener("submit", searchCity);
-
-if (map) {
-  map.on("click", (event) => {
-    if (state.mapLocked || state.isAnimating) {
-      return;
-    }
-
-    setTarget(event.latlng.lat, event.latlng.lng);
-  });
-}
 
 updateZones();
 initializeDiscordSDK();
