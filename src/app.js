@@ -10,6 +10,40 @@ import {
 
 document.body.setAttribute("data-js-loaded", "true");
 
+const DISCORD_CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID;
+
+let map = null;
+
+function createMap() {
+  if (map) {
+    return map;
+  }
+
+  map = L.map(document.getElementById("map"), {
+    center: [20, 0],
+    zoom: 2,
+    zoomControl: false,
+    worldCopyJump: true,
+    minZoom: 2,
+    maxZoom: 19
+  });
+
+  L.control.zoom({
+    position: "topright"
+  }).addTo(map);
+
+  const tileUrl = DISCORD_CLIENT_ID
+    ? "/tiles/{z}/{x}/{y}.png"
+    : "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+  L.tileLayer(tileUrl, {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+
+  return map;
+}
+
 const presets = {
   davyCrockett: [
     { name: "Fireball Radius", meters: 500, display: "500m", color: "#FF4500" },
@@ -72,30 +106,6 @@ const elements = {
   presetButtons: document.querySelectorAll(".preset-button")
 };
 
-const map = L.map(elements.map, {
-  center: [20, 0],
-  zoom: 2,
-  zoomControl: false,
-  worldCopyJump: true,
-  minZoom: 2,
-  maxZoom: 19
-});
-
-L.control.zoom({
-  position: "topright"
-}).addTo(map);
-
-const tileUrl =
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-L.tileLayer(
-  tileUrl,
-  {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
-  }
-).addTo(map);
-
 function updateZones() {
   const zones = presets[state.selectedPreset];
 
@@ -122,6 +132,10 @@ function updateZones() {
 }
 
 function clearRings() {
+  if (!map) {
+    return;
+  }
+
   for (const ring of state.rings) {
     map.removeLayer(ring);
   }
@@ -130,6 +144,10 @@ function clearRings() {
 }
 
 function clearExplosionRings() {
+  if (!map) {
+    return;
+  }
+
   for (const ring of state.explosionRings) {
     map.removeLayer(ring);
   }
@@ -138,7 +156,7 @@ function clearExplosionRings() {
 }
 
 function setTarget(lat, lng, zoomToTarget = false) {
-  if (state.isAnimating) {
+  if (!map || state.isAnimating) {
     return;
   }
 
@@ -173,17 +191,15 @@ function setTarget(lat, lng, zoomToTarget = false) {
   elements.activateButton.textContent = "DETONATE";
 
   if (zoomToTarget) {
-    map.setView(
-      [lat, lng],
-      13,
-      {
-        animate: true
-      }
-    );
+    map.setView([lat, lng], 13, { animate: true });
   }
 }
 
 function lockMap() {
+  if (!map) {
+    return;
+  }
+
   state.mapLocked = true;
 
   map.dragging.disable();
@@ -197,6 +213,10 @@ function lockMap() {
 }
 
 function unlockMap() {
+  if (!map) {
+    return;
+  }
+
   state.mapLocked = false;
 
   map.dragging.enable();
@@ -215,7 +235,7 @@ function easeOutCubic(t) {
 
 function animateExplosion() {
   return new Promise((resolve) => {
-    if (!state.target) {
+    if (!map || !state.target) {
       resolve();
       return;
     }
@@ -246,48 +266,24 @@ function animateExplosion() {
 
     function frame(currentTime) {
       const elapsed = currentTime - startTime;
-
-      const progress = Math.min(
-        elapsed / duration,
-        1
-      );
+      const progress = Math.min(elapsed / duration, 1);
 
       zones.forEach((zone, index) => {
         const ring = explosionRings[index];
-
         const zoneStart = index * 0.10;
-
         const zoneProgress = Math.max(
           0,
-          Math.min(
-            (progress - zoneStart) /
-              (1 - zoneStart),
-            1
-          )
+          Math.min((progress - zoneStart) / (1 - zoneStart), 1)
         );
+        const easedZoneProgress = easeOutCubic(zoneProgress);
 
-        const easedZoneProgress =
-          easeOutCubic(zoneProgress);
-
-        ring.setRadius(
-          zone.meters * easedZoneProgress
-        );
-
-        const pulse =
-          Math.sin(zoneProgress * Math.PI);
+        ring.setRadius(zone.meters * easedZoneProgress);
+        const pulse = Math.sin(zoneProgress * Math.PI);
 
         ring.setStyle({
-          opacity:
-            0.65 +
-            pulse * 0.35,
-
-          fillOpacity:
-            0.08 +
-            pulse * 0.16,
-
-          weight:
-            2 +
-            pulse * 4
+          opacity: 0.65 + pulse * 0.35,
+          fillOpacity: 0.08 + pulse * 0.16,
+          weight: 2 + pulse * 4
         });
       });
 
@@ -295,10 +291,7 @@ function animateExplosion() {
         requestAnimationFrame(frame);
       } else {
         zones.forEach((zone, index) => {
-          explosionRings[index].setRadius(
-            zone.meters
-          );
-
+          explosionRings[index].setRadius(zone.meters);
           explosionRings[index].setStyle({
             opacity: 0.9,
             fillOpacity: 0.16,
@@ -306,12 +299,8 @@ function animateExplosion() {
           });
         });
 
-        state.rings = [
-          ...explosionRings
-        ];
-
+        state.rings = [...explosionRings];
         state.explosionRings = [];
-
         resolve();
       }
     }
@@ -321,7 +310,7 @@ function animateExplosion() {
 }
 
 async function activate() {
-  if (!state.target || state.isAnimating) {
+  if (!map || !state.target || state.isAnimating) {
     return;
   }
 
@@ -360,8 +349,7 @@ function handlePresetChange(event) {
     return;
   }
 
-  state.selectedPreset =
-    event.currentTarget.dataset.preset;
+  state.selectedPreset = event.currentTarget.dataset.preset;
 
   elements.presetButtons.forEach((button) => {
     button.classList.toggle(
@@ -378,12 +366,11 @@ function handlePresetChange(event) {
 async function searchCity(event) {
   event.preventDefault();
 
-  if (state.isAnimating) {
+  if (state.isAnimating || !map) {
     return;
   }
 
-  const query =
-    elements.searchInput.value.trim();
+  const query = elements.searchInput.value.trim();
 
   if (!query) {
     return;
@@ -398,47 +385,36 @@ async function searchCity(event) {
     );
 
     if (!response.ok) {
-      throw new Error(
-        `Search request failed: ${response.status}`
-      );
+      throw new Error(`Search request failed: ${response.status}`);
     }
 
     const results = await response.json();
 
     if (!results.length) {
       elements.searchInput.value = "";
-      elements.searchInput.placeholder =
-        "LOCATION NOT FOUND";
+      elements.searchInput.placeholder = "LOCATION NOT FOUND";
 
       setTimeout(() => {
-        elements.searchInput.placeholder =
-          "Search for a city...";
+        elements.searchInput.placeholder = "Search for a city...";
       }, 1800);
 
       return;
     }
 
     const result = results[0];
-
     const lat = Number(result.lat);
     const lng = Number(result.lon);
 
     setTarget(lat, lng, true);
-
     elements.searchInput.value = "";
   } catch (error) {
-    console.error(
-      "City search failed:",
-      error
-    );
+    console.error("City search failed:", error);
 
     elements.searchInput.value = "";
-    elements.searchInput.placeholder =
-      "SEARCH FAILED";
+    elements.searchInput.placeholder = "SEARCH FAILED";
 
     setTimeout(() => {
-      elements.searchInput.placeholder =
-        "Search for a city...";
+      elements.searchInput.placeholder = "Search for a city...";
     }, 1800);
   } finally {
     elements.searchInput.disabled = false;
@@ -446,96 +422,80 @@ async function searchCity(event) {
   }
 }
 
-async function initializeDiscordSDK() {
-  const clientId =
-    import.meta.env.VITE_DISCORD_CLIENT_ID;
-
-  if (!clientId) {
-    elements.discordStatus.textContent =
-      "DISCORD SDK: CLIENT ID NOT CONFIGURED";
-
-    return;
+function configureDiscordTileProxy() {
+  if (!DISCORD_CLIENT_ID) {
+    return false;
   }
 
-  try {
-    state.discordSdk =
-      new DiscordSDK(clientId);
-
-    await state.discordSdk.ready();
-
-    console.log("DISCORD SDK READY");
-    console.log("PATCHING TILE URL MAPPING");
-
-    patchUrlMappings(
-  [
+  patchUrlMappings([
     {
       prefix: "/tiles",
       target: "tile.openstreetmap.org"
     }
-  ],
-  {
-    patchSrcAttributes: true
+  ]);
+
+  return true;
+}
+
+async function initializeDiscordSDK() {
+  if (!DISCORD_CLIENT_ID) {
+    createMap();
+    elements.discordStatus.textContent = "DISCORD SDK: LOCAL MODE";
+    setTimeout(() => {
+      if (map) {
+        map.invalidateSize();
+      }
+    }, 100);
+    return;
   }
-);
 
-    console.log("TILE URL MAPPING PATCHED");
+  try {
+    state.discordSdk = new DiscordSDK(DISCORD_CLIENT_ID);
+    await state.discordSdk.ready();
 
-    elements.discordStatus.textContent =
-      "DISCORD SDK: READY";
+    console.log("DISCORD SDK READY");
+    configureDiscordTileProxy();
+    createMap();
+
+    elements.discordStatus.textContent = "DISCORD SDK: READY";
 
     setTimeout(() => {
-      map.invalidateSize();
+      if (map) {
+        map.invalidateSize();
+      }
     }, 100);
   } catch (error) {
-    console.warn(
-      "Discord SDK is not running inside Discord:",
-      error
-    );
-
-    elements.discordStatus.textContent =
-      "DISCORD SDK: LOCAL MODE";
+    console.warn("Discord SDK is not running inside Discord:", error);
+    createMap();
+    elements.discordStatus.textContent = "DISCORD SDK: LOCAL MODE";
   }
 }
 
 elements.presetButtons.forEach((button) => {
-  button.addEventListener(
-    "click",
-    handlePresetChange
-  );
+  button.addEventListener("click", handlePresetChange);
 });
 
-elements.activateButton.addEventListener(
-  "click",
-  activate
-);
+elements.activateButton.addEventListener("click", activate);
 
-elements.searchForm.addEventListener(
-  "submit",
-  searchCity
-);
+elements.searchForm.addEventListener("submit", searchCity);
 
-map.on("click", (event) => {
-  if (
-    state.mapLocked ||
-    state.isAnimating
-  ) {
-    return;
-  }
+if (map) {
+  map.on("click", (event) => {
+    if (state.mapLocked || state.isAnimating) {
+      return;
+    }
 
-  setTarget(
-    event.latlng.lat,
-    event.latlng.lng
-  );
-});
+    setTarget(event.latlng.lat, event.latlng.lng);
+  });
+}
 
 updateZones();
-
 initializeDiscordSDK();
 
 setTimeout(() => {
-  map.invalidateSize();
+  if (map) {
+    map.invalidateSize();
+  }
 }, 100);
 
-console.log(
-  "DISTANCE MAPPING SIMULATOR INITIALIZED"
-);
+console.log("DISTANCE MAPPING SIMULATOR INITIALIZED");
